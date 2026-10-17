@@ -153,6 +153,23 @@ def test_job_lands_in_the_calls_output_dir(monkeypatch, tmp_path):
     assert "artifact_dir" not in calls[-1] and "job_name" not in calls[-1]
 
 
+def test_run_kernel_passes_an_explicit_image_choice_only(monkeypatch):
+    """Contract R11: the engine auto-detects tools/env/image.yml itself, so
+    run_kernel forwards `image` only when the caller chose (False = lock env,
+    a ref = that image) - an engine without the parameter keeps working."""
+    from mcp_server import dispatch as d
+
+    calls = []
+    monkeypatch.setitem(d._state, "site", "perlmutter")
+    monkeypatch.setattr(d, "_engine", lambda: {"perlmutter": lambda **kw: (calls.append(kw) or {"status": "success", "result": {}})})
+    d.run_kernel("inner.noop.main", {"params": {}}, duration=600)
+    assert "image" not in calls[-1]
+    d.run_kernel("inner.noop.main", {"params": {}}, duration=600, image=False)
+    assert calls[-1]["image"] is False
+    d.run_kernel("inner.noop.main", {"params": {}}, duration=600, image="ghcr.io/nesar/desc-mcp:f4497551acdf-cpu")
+    assert calls[-1]["image"] == "ghcr.io/nesar/desc-mcp:f4497551acdf-cpu"
+
+
 def test_run_kernel_no_wait_returns_the_handle_and_collect_kernel_checks(monkeypatch, tmp_path):
     """wait=False (contract R10): the engine's 'submitted' handle passes through
     untouched; collect_kernel reads the record, passes pending through and

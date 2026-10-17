@@ -228,8 +228,16 @@ def remote_site() -> str | None:
 def run_kernel(function: str, args: dict, pip_deps: list[str] | None = None,
                duration: int = 600, nodes: int = 1, env_lock: str | bool | None = None,
                tasks_per_node: int | None = None, cpus_per_task: int | None = None,
-               gpus_per_task: int | None = None, wait: bool = True) -> dict:
+               gpus_per_task: int | None = None, wait: bool = True,
+               image: str | bool | None = None) -> dict:
     """Run a kernel from this server's tools/ package on the active site.
+
+    ``image`` (hep-genesis contract R11, engines >= the container carrier):
+    None = the pack's own ``tools/env/image.yml`` when the image has been
+    built and pushed (the engine then runs the kernel inside that container
+    instead of building the lock env on the node); False = never use a
+    container (``run_pack_kernel(image='none')``); a fully qualified
+    reference = that image. Older engines without the parameter ignore it.
 
     ``wait=False`` (hep-genesis contract R10) returns as soon as the
     scheduler accepts the job: the engine's ``{"status": "submitted",
@@ -266,9 +274,12 @@ def run_kernel(function: str, args: dict, pip_deps: list[str] | None = None,
         # builds that environment on the node (env_lock auto-detected).
         shape = {k: v for k, v in (("tasks_per_node", tasks_per_node), ("cpus_per_task", cpus_per_task),
                                    ("gpus_per_task", gpus_per_task)) if v}
+        # image=None is the engine's own default (auto-detect env/image.yml);
+        # only an explicit choice is passed, so engines predating R11 still work.
         result = run(function=function, args=args, codes=str(TOOLS_DIR),
                      pip_deps=pip_deps, duration=duration, nodes=nodes, env_lock=env_lock,
-                     **_job_placement(function, args), **shape, **({} if wait else {"wait": False}))
+                     **_job_placement(function, args), **shape, **({} if wait else {"wait": False}),
+                     **({} if image is None else {"image": image}))
     except Exception as exc:
         body = ""
         resp = getattr(exc, "response", None)
