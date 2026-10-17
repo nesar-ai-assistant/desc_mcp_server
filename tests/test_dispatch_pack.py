@@ -62,7 +62,9 @@ def test_inner_scripts_are_facility_safe():
 
 def test_manifest_has_no_identity_and_env_candidates():
     pack = export_dispatch_pack()["dispatch_pack"]
-    blob = json.dumps({k: v for k, v in pack.items() if k != "files"}).lower()
+    # "image" is the public registry path of the container (ghcr.io/<owner>/...):
+    # an identity-free, credential-free pointer, not a facility identity
+    blob = json.dumps({k: v for k, v in pack.items() if k not in ("files", "image")}).lower()
     for forbidden in ("nesar", "m1727", "nersc_project", "pscratch/sd"):
         assert forbidden not in blob
     env = pack["env_kernel"]
@@ -81,6 +83,18 @@ def test_manifest_has_no_identity_and_env_candidates():
             assert f"tools/inner/{k['inner']}.py" in pack["files"], name
         else:
             assert "pip_deps" in k, name
+
+
+def test_pack_names_its_container_image():
+    pack = export_dispatch_pack()["dispatch_pack"]
+    assert "tools/env/image.yml" in pack["files"]
+    assert "tools/env/conda-lock-image.yml" not in pack["files"]  # the image is the artefact
+    img = pack["image"]
+    assert img["ref"] == "ghcr.io/nesar/desc-mcp" and img["tag"].endswith("-cpu")
+    assert img["mpi"] == "mpich-abi"
+    assert img["perlmutter"]["runtime"] == "podman-hpc" and img["polaris"]["runtime"] == "apptainer"
+    from mcp_server.dispatch import _image_manifest
+    assert _image_manifest(None) is None and _image_manifest("ref: x\n") is None
 
 
 def test_pack_carries_its_environment():

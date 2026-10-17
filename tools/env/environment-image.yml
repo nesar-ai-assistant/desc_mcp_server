@@ -1,0 +1,58 @@
+# The desc-mcp-server environment for CONTAINER IMAGES (linux-64), source of truth
+# for `conda-lock-image.yml` next to it. Same package set as environment.yml with
+# one difference: MPI is MPICH, not Open MPI.
+#
+# Why: both facilities inject the host Cray MPICH into a running container
+# (podman-hpc `--mpi` on Perlmutter, `module load cray-mpich-abi` + bind mounts on
+# Polaris). That works only when the image's own MPI is MPICH-ABI (libmpi.so.12).
+# environment.yml lets the solver pick Open MPI (via cosmosis/tjpcov -> mpi4py), which
+# also drags in a bundled libfabric with no Slingshot provider: the exact
+# `fi_getinfo` failure the lock-env path had to work around by rebuilding mpi4py.
+# conda-forge has no `external_*` build of mpich 4.x, so the image carries a real
+# MPICH 4.3; on a laptop/VM `docker run` uses it as is, on a facility the injected
+# Cray library replaces it (see Dockerfile: the conda libmpi is unlinked so the
+# host's wins).
+#
+# Edit this file, then:  bash scripts/image.sh --relock   (needs conda/mamba + uv)
+name: desc-mcp-image
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - git
+  - mpich>=4.2
+  - mpi4py>=4
+  - numpy>=2.0,<2.4
+  - scipy>=1.13
+  - camb<2.0
+  - pyccl>=3.3.1
+  - sacc>=2.4
+  - firecrown>=1.16
+  - tjpcov>=0.5
+  - namaster
+  - lsstdesc-ceci>=2.4
+  - lsstdesc-crow
+  - qp-prob
+  - healpy
+  - numdifftools
+  - jinja2
+  - cryptography
+  - matplotlib-base
+  - h5py
+  - astropy
+  - pyyaml
+  - getdist
+  - derivkit
+  - portalocker
+  - pytest
+  - anyio
+  - pip:
+      - mcp[cli]>=1.27,<2
+      - pydantic>=2,<3
+      - cobaya
+      - jsonargparse[signatures]>=4.0
+      # the vendored augur clone's commit (1.2.4; conda-forge lags) - same code on every host
+      - augur @ git+https://github.com/LSSTDESC/augur@f8ab7cf
+      # the vendored Smokescreen clone's commit (conda-forge 1.5.6 predates save_concealed_datavector(suffix=))
+      - Smokescreen @ git+https://github.com/LSSTDESC/Smokescreen@beab5af

@@ -193,6 +193,36 @@ Same recipe as the other HEP-KE servers (a Linux box behind a reverse proxy):
 The hosted server needs **no** facility sign-in, project, or environment
 settings and ships no example data; see the next section.
 
+**Container alternative (same environment, one command).** The image
+`ghcr.io/nesar/desc-mcp` carries the MPICH variant of the lock
+(`tools/env/conda-lock-image.yml`) plus the server; its tag is the lock's hash
+(`<sha12>-cpu`, also `latest`). It is the only way to run this server on
+Windows (via Docker Desktop/WSL2) and the same image runs the dispatched
+kernels on Perlmutter (podman-hpc) and Polaris (apptainer) when the client's
+hep-genesis engine has the container carrier enabled.
+
+```bash
+docker run -d --name desc-mcp -p 127.0.0.1:8008:8008 \
+  -e MCP_PUBLIC=1 -e MCP_ARTIFACT_URL=https://files.example.org/desc \
+  -v /srv/artifacts/desc:/srv/artifacts ghcr.io/nesar/desc-mcp:latest
+python tests/smoke_server.py http://127.0.0.1:8008/mcp
+```
+
+The image ships no upstream clones, so the tools that read example data or
+stage metadata from them (`txpipe_*`, `augur_generate_forecast_config`,
+`firecrown_list_examples`) answer "clone not available" until you mount one:
+`-v /srv/clones/TXPipe:/clones/TXPipe -e DESC_TXPIPE_DIR=/clones/TXPipe`
+(same for `DESC_AUGUR_DIR`, `DESC_FIRECROWN_DIR`, ...). Everything else
+(`tests/smoke_server.py`: 34/38 calls, the 4 failures are exactly those) works
+without them.
+
+Build/test/push it yourself with `bash scripts/image.sh [--relock] [--test] [--push]`
+(`--save DIR` writes a `docker save` tar for registry-less facilities:
+`apptainer build x.sif docker-archive://x.tar`). The image has no
+ENTRYPOINT on purpose (podman-hpc's `--mpi` module and the engine's
+`<image> python runner.py` both need a bare command); `docker run <image>`
+starts the server through CMD.
+
 ## Run on HPC
 
 All facility access goes through the hep-genesis dispatch engine (IRI for

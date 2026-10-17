@@ -47,7 +47,12 @@ TOOLS_DIR = Path(__file__).resolve().parents[1] / "tools"
 # The environment the pack carries (relative to tools/); the engine ships and
 # builds it by default (hep_genesis.iri.dispatch.envsetup.ENV_LOCK_RELPATH).
 ENV_LOCK = "env/conda-lock.yml"
-ENV_FILES = ("env/conda-lock.yml", "env/environment.yml")
+# env/image.yml names the container image built from the MPICH variant of the same
+# environment (scripts/image.sh); an engine with a container carrier may run the
+# kernels in it instead of building the lock env on the node. The image lock itself
+# does not travel: the image is the artefact, the tag is its hash.
+ENV_IMAGE = "env/image.yml"
+ENV_FILES = ("env/conda-lock.yml", "env/environment.yml", ENV_IMAGE)
 
 _state = {"site": "local"}
 
@@ -97,6 +102,20 @@ def _collect_kernel_manifest() -> dict:
     return kernels
 
 
+def _image_manifest(text: str | None) -> dict | None:
+    """The pack's container image, from tools/env/image.yml: ``{ref, tag, digest,
+    platforms, mpi, perlmutter, polaris}``; ``None`` when the file is absent or the
+    tag is empty. ``digest`` is empty until the image is pushed."""
+    if not text:
+        return None
+    import yaml
+
+    meta = yaml.safe_load(text) or {}
+    if not meta.get("ref") or not meta.get("tag"):
+        return None
+    return {k: meta.get(k) for k in ("ref", "tag", "digest", "platforms", "mpi", "perlmutter", "polaris")}
+
+
 def export_dispatch_pack() -> dict:
     """Hand THIS DESC server's compute kernels to the client for HPC runs.
 
@@ -117,6 +136,10 @@ def export_dispatch_pack() -> dict:
     total = 0
     env_paths = [TOOLS_DIR / rel for rel in ENV_FILES if (TOOLS_DIR / rel).is_file()]
     for path in sorted(TOOLS_DIR.rglob("*.py")) + env_paths:
+        # the image lock is not shipped (see ENV_IMAGE); rglob never matches it,
+        # but keep the pack honest if someone adds it to ENV_FILES
+        if path.name == "conda-lock-image.yml":
+            continue
         rel = path.relative_to(TOOLS_DIR)
         if any(part.startswith((".", "__pycache__")) for part in rel.parts):
             continue
@@ -142,6 +165,8 @@ def export_dispatch_pack() -> dict:
             # contract R8: the lock IS the node environment; the engine detects
             # it at this path and builds it (micromamba) before the kernel runs
             "env_lock": ENV_LOCK if f"tools/{ENV_LOCK}" in files else None,
+            # container carrier (optional for the engine): {ref, tag, digest, mpi, ...}
+            "image": _image_manifest(files.get(f"tools/{ENV_IMAGE}")),
             "env_lock_note": "Pass no env_setup and no pip_deps: run_pack_kernel builds the "
                              "environment from this lock on the facility (first job with a new "
                              "lock: minutes; later jobs reuse it). env_setup remains an override "

@@ -1,11 +1,13 @@
-# upstream DESC package clones (read-only references, never modified here)
-CCL/
-CCLX/
-TXPipe/
-firecrown/
-augur/
+# upstream DESC package clones (read-only references, never modified here).
+# Anchored to the repo root: unanchored `CCL/` also ignored tools/ccl/ on the
+# case-insensitive macOS filesystem, so the ccl tool family never reached git (2026-10-16).
+/CCL/
+/CCLX/
+/TXPipe/
+/firecrown/
+/augur/
 # shallow clones of integration/example repos
-external/
+/external/
 # local junk
 __pycache__/
 *.pyc

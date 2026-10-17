@@ -54,6 +54,42 @@ sure way to break the solve.
   `CCLFactory`, `ParamsMap`, `get_default_params_map`) because the NERSC
   `desc-python` stack is at 1.15.2.
 
+## The container image (same environment, MPICH flavour)
+
+`tools/env/environment-image.yml` is `environment.yml` plus `mpich` + `mpi4py`
+pinned to MPICH; `tools/env/conda-lock-image.yml` is its linux-64 solve
+(`bash scripts/image.sh --relock`, micromamba as the conda-lock solver, ~30 s)
+and the `Dockerfile` builds `ghcr.io/nesar/desc-mcp:<sha12>-cpu` from it
+(ubuntu 22.04, micromamba 2.9, `/opt/env`, server pip-installed on top;
+`tools/env/image.yml` records ref/tag and travels in the dispatch pack as
+`env/image.yml`). Why MPICH: Perlmutter (`podman-hpc --mpi`) and Polaris
+(`cray-mpich-abi` + bind mounts) inject the host Cray MPICH into a running
+container, which only works against an MPICH-ABI `libmpi.so.12`; the laptop
+lock's Open MPI (via cosmosis/tjpcov) cannot be replaced and drags a
+libfabric without Slingshot support into the solve.
+
+Two build-time facts, both verified on 2026-10-16:
+
+- **conda-forge binaries use DT_RPATH, not RUNPATH** (`readelf -d` on
+  `mpi4py/MPI.so`: `RPATH [$ORIGIN/../../..]`), and the loader searches RPATH
+  *before* `LD_LIBRARY_PATH`, so an injected Cray MPICH would lose to the
+  bundled one. The Dockerfile therefore moves the bundled `libmpi*`,
+  `libmpich*`, `libmpicxx*`, `libmpifort*` into `/opt/env/lib/mpich-bundled/`
+  and registers that directory with `ldconfig` (searched *after*
+  `LD_LIBRARY_PATH`). `docker run` on a laptop still gets MPICH 4.3.2; on a
+  facility whatever the host puts on `LD_LIBRARY_PATH` wins (checked with a
+  decoy `libmpi.so.12`: `ImportError: file too short`, i.e. the decoy was
+  picked).
+- **micromamba only recognises a conda-lock file named `conda-lock.yml`**;
+  any other name (e.g. `conda-lock-image.yml`) silently gives
+  `Empty environment created`. The Dockerfile copies the image lock to
+  `/opt/env-lock/conda-lock.yml` before `micromamba create`.
+
+Inside the image (`docker run --rm <image> python tests/smoke_env.py`):
+9/10 checks pass; the one failure is "TXPipe clone not found", expected
+because no upstream clones are shipped. Image size: ~0.9 GB (`docker save`
+tar 0.86 GB). Not in the image: isitgr, TXPipe, the clones, example data.
+
 ## Why TXPipe is not in this environment
 
 TXPipe pins `firecrown=1.7.*` (its theory and blinding stages import

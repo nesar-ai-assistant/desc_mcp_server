@@ -1,0 +1,18 @@
+# build context = the server repo only; environments, clones and outputs never enter the image
+.git
+.mcp-env
+.micromamba
+CCL
+CCLX
+TXPipe
+firecrown
+augur
+external
+output
+notes
+**/__pycache__
+**/*.pyc
+**/*.egg-info
+.pytest_cache
+*.bak
+.DS_Store
