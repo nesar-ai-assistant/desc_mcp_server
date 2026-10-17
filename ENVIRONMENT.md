@@ -59,8 +59,9 @@ sure way to break the solve.
 `tools/env/environment-image.yml` is `environment.yml` plus `mpich` + `mpi4py`
 pinned to MPICH; `tools/env/conda-lock-image.yml` is its linux-64 solve
 (`bash scripts/image.sh --relock`, micromamba as the conda-lock solver, ~30 s)
-and the `Dockerfile` builds `ghcr.io/nesar/desc-mcp:<sha12>-cpu` from it
-(ubuntu 22.04, micromamba 2.9, `/opt/env`, server pip-installed on top;
+and the `Dockerfile` builds `ghcr.io/nesar/desc-mcp:<sha12>-u24-cpu` from it
+(ubuntu 24.04 — glibc 2.39, because Polaris' injected Cray MPICH 9.1 needs GLIBC_2.38
+and ubuntu 22.04's 2.35 failed there on 2026-10-17 —, micromamba 2.9, `/opt/env`, server pip-installed on top;
 `tools/env/image.yml` records ref/tag and travels in the dispatch pack as
 `env/image.yml`). Why MPICH: Perlmutter (`podman-hpc --mpi`) and Polaris
 (`cray-mpich-abi` + bind mounts) inject the host Cray MPICH into a running

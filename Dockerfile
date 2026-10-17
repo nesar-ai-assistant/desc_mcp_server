@@ -10,16 +10,19 @@
 # no example data, no facility identity.
 #
 # Build (see scripts/image.sh):
-#   docker buildx build --platform linux/amd64 --build-arg LOCK_SHA=$(shasum -a 1 tools/env/conda-lock-image.yml | cut -c1-12) -t ghcr.io/nesar/desc-mcp:<sha>-cpu .
-FROM ubuntu:22.04
+#   docker buildx build --platform linux/amd64 --build-arg LOCK_SHA=$(shasum -a 1 tools/env/conda-lock-image.yml | cut -c1-12) -t ghcr.io/nesar/desc-mcp:<sha>-u24-cpu .
+#
+# Base OS: ubuntu 24.04 (glibc 2.39). Polaris injects Cray MPICH 9.1 via cray-mpich-abi, whose
+# libraries need GLIBC_2.38; on ubuntu 22.04 (glibc 2.35) mpi4py failed to import on Polaris
+# (Perlmutter's injected MPICH is fine with either). The tag carries the base OS (-u24) so a
+# base bump is a new image even with the same lock.
+FROM ubuntu:24.04
 ARG LOCK_SHA=unknown
-# release tag in mamba-org/micromamba-releases (version-build); 2.9.0 is what scripts/env.sh fetched
-ARG MICROMAMBA_VERSION=2.9.0-0
-ARG TARGETARCH
 
 LABEL org.opencontainers.image.source="https://github.com/nesar/desc_mcp_server" \
       org.opencontainers.image.description="LSST DESC cosmology stack (CCL, sacc, firecrown, augur, TJPCov, NaMaster, Smokescreen) as MCP tools" \
       org.desc-mcp.lock-sha="${LOCK_SHA}" \
+      org.desc-mcp.base="ubuntu:24.04 glibc 2.39 (Polaris cray-mpich-abi needs >= 2.38)" \
       org.desc-mcp.mpi="mpich-abi (bundled MPICH in /opt/env/lib/mpich-bundled; host MPI injected via LD_LIBRARY_PATH wins)"
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -33,20 +36,16 @@ ENV DEBIAN_FRONTEND=noninteractive \
     XDG_CONFIG_HOME=/tmp/config \
     OMP_STACKSIZE=512M
 
-# git + ca-certificates: the lock's pip section installs augur/Smokescreen from git.
-# libgomp/libgfortran come from conda-forge; nothing else from apt.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl git bzip2 \
- && rm -rf /var/lib/apt/lists/*
-
-# micromamba, pinned, straight from the GitHub release (same source scripts/env.sh uses)
-RUN set -eu; \
-    case "${TARGETARCH}" in amd64) plat=linux-64 ;; arm64) plat=linux-aarch64 ;; *) echo "unsupported arch ${TARGETARCH}" >&2; exit 2 ;; esac; \
-    mkdir -p /opt/micromamba/bin; \
-    curl -fsSL --retry 3 -o /opt/micromamba/bin/micromamba \
-        "https://github.com/mamba-org/micromamba-releases/releases/download/${MICROMAMBA_VERSION}/micromamba-${plat}"; \
-    chmod +x /opt/micromamba/bin/micromamba; \
-    micromamba --version
+# No apt at all: ubuntu 24.04's apt verifies signatures with sqv, which fails under
+# qemu user-mode emulation ("At least one invalid signature was encountered" when building
+# linux/amd64 on an Apple-silicon laptop). Everything the build needs comes from elsewhere:
+# the static micromamba binary from the official image (same pinned version as the GitHub
+# release scripts/env.sh fetches), git + ca-certificates from conda-forge (both in the lock,
+# linked before the lock's pip section clones augur/Smokescreen; /opt/env/bin is on PATH).
+COPY --from=mambaorg/micromamba:2.9.0 /bin/micromamba /opt/micromamba/bin/micromamba
+# CA bundle for micromamba's downloads ("No CA certificates found on system" otherwise)
+COPY --from=mambaorg/micromamba:2.9.0 /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+RUN micromamba --version
 
 # the environment, exactly the lock (no solve); caches dropped in the same layer.
 # micromamba recognises a conda-lock file ONLY by the name `conda-lock.yml` (any other

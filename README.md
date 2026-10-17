@@ -196,7 +196,7 @@ settings and ships no example data; see the next section.
 **Container alternative (same environment, one command).** The image
 `ghcr.io/nesar/desc-mcp` carries the MPICH variant of the lock
 (`tools/env/conda-lock-image.yml`) plus the server; its tag is the lock's hash
-(`<sha12>-cpu`, also `latest`). It is the only way to run this server on
+(`<sha12>-u24-cpu`: lock hash + base OS ubuntu 24.04, also `latest`). It is the only way to run this server on
 Windows (via Docker Desktop/WSL2) and the same image runs the dispatched
 kernels on Perlmutter (podman-hpc) and Polaris (apptainer) when the client's
 hep-genesis engine has the container carrier enabled.

@@ -72,6 +72,7 @@ def test_dockerfile_uses_the_image_lock():
     assert "/conda-lock.yml" in text
     assert "ENTRYPOINT" not in [ln.split()[0] for ln in text.splitlines() if ln.strip() and not ln.startswith("#")]
     assert "mpich-bundled" in text
+    assert "FROM ubuntu:24.04" in text, "Polaris MPI injection needs GLIBC_2.38 (ubuntu 22.04 has 2.35)"
 
 
 def test_image_metadata_file():
@@ -80,4 +81,5 @@ def test_image_metadata_file():
     assert meta["lock"] == "conda-lock-image.yml"
     import hashlib
     sha = hashlib.sha1((ENV / "conda-lock-image.yml").read_bytes()).hexdigest()[:12]
-    assert meta["tag"] == f"{sha}-cpu", f"image.yml tag {meta['tag']} != lock sha {sha}: rerun scripts/image.sh"
+    assert meta["tag"] == f"{sha}-u24-cpu", f"image.yml tag {meta['tag']} != lock sha {sha}: rerun scripts/image.sh"
+    assert meta.get("base") == "ubuntu:24.04"  # Polaris cray-mpich-abi needs glibc >= 2.38

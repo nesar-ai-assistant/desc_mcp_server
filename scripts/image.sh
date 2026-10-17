@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # Build, test, tag and push the desc-mcp-server container image.
 #
-#   bash scripts/image.sh                 # build linux/amd64 -> ghcr.io/nesar/desc-mcp:<locksha>-cpu (+ latest)
+#   bash scripts/image.sh                 # build linux/amd64 -> ghcr.io/nesar/desc-mcp:<locksha>-u24-cpu (+ latest)
 #   bash scripts/image.sh --relock        # re-solve tools/env/environment-image.yml -> conda-lock-image.yml first
 #   bash scripts/image.sh --test          # run tests/smoke_env.py + pytest inside the built image
 #   bash scripts/image.sh --push          # push both tags (needs `docker login ghcr.io`; see README "Hosting")
-#   bash scripts/image.sh --save DIR      # docker save to DIR/desc-mcp-<locksha>-cpu.tar (registry-less fallback:
+#   bash scripts/image.sh --save DIR      # docker save to DIR/desc-mcp-<locksha>-u24-cpu.tar (registry-less fallback:
 #                                         #   Polaris: apptainer build x.sif docker-archive://x.tar)
 #   bash scripts/image.sh --platform linux/arm64   # when the lock carries linux-aarch64
 #
 # The tag IS the environment identity: first 12 hex of sha1(conda-lock-image.yml), the same
-# hash the hep-genesis engine uses for lock envs. A code-only change rebuilds the same tag.
+# hash the hep-genesis engine uses for lock envs, plus the base OS (-u24 = ubuntu 24.04,
+# glibc 2.39: Polaris' injected Cray MPICH 9.1 needs GLIBC_2.38). A code-only change rebuilds
+# the same tag; a base bump or a relock makes a new one.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -49,8 +51,9 @@ fi
 [ -f "$LOCK" ] || { echo "no lock at $LOCK (run with --relock)" >&2; exit 2; }
 
 SHA="$(shasum -a 1 "$LOCK" | cut -c1-12)"
+BASE_TAG="${BASE_TAG:-u24}"   # must match the Dockerfile FROM line
 case "$PLATFORM" in *arm64*) ARCH_TAG="-arm64" ;; *) ARCH_TAG="" ;; esac
-TAG="$IMAGE:$SHA-cpu$ARCH_TAG"
+TAG="$IMAGE:$SHA-$BASE_TAG-cpu$ARCH_TAG"
 echo "image: $TAG (platform $PLATFORM)"
 
 if [ "$BUILD" = 1 ]; then
@@ -68,7 +71,7 @@ fi
 
 if [ -n "$SAVE" ]; then
     mkdir -p "$SAVE"
-    out="$SAVE/desc-mcp-$SHA-cpu$ARCH_TAG.tar"
+    out="$SAVE/desc-mcp-$SHA-$BASE_TAG-cpu$ARCH_TAG.tar"
     echo "--- docker save -> $out"
     docker save -o "$out" "$TAG"
     ls -lh "$out"

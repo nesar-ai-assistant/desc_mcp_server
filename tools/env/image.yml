@@ -3,14 +3,17 @@
 # env/image.yml so an engine with a container carrier can run the kernels in it instead of
 # building the lock env on the node; engines without one ignore it (the lock still travels).
 #
-# tag = first 12 hex of sha1(conda-lock-image.yml) + "-cpu"; the test suite checks it.
+# tag = first 12 hex of sha1(conda-lock-image.yml) + "-u24" (base ubuntu 24.04, glibc 2.39:
+# Polaris cray-mpich-abi needs GLIBC_2.38) + "-cpu"; the test suite checks it.
 # digest is filled in after a push (docker buildx imagetools inspect); empty = unpublished.
 ref: ghcr.io/nesar/desc-mcp
-tag: f4497551acdf-cpu
-digest: sha256:ea5fc2bb2655b32fc44dad5b61e8810a92802541f4e9124e35dc8a5d26e62e11
+tag: f4497551acdf-u24-cpu
+digest: ""
 lock: conda-lock-image.yml
 platforms: [linux/amd64]
 mpi: mpich-abi
+base: ubuntu:24.04
+glibc: "2.39"
 # per-facility launch hints (what the image needs from the host; the engine owns the commands)
 perlmutter: {runtime: podman-hpc, flags: ["--mpi", "--entrypoint=", "--userns keep-id", "--group-add keep-groups"]}
 polaris: {runtime: apptainer, modules: ["cray-mpich-abi"], binds: ["/opt", "/var/run/palsd/"], ld_library_path: "$CRAY_LD_LIBRARY_PATH:$LD_LIBRARY_PATH:/opt/cray/pe/pals/1.2.12/lib"}
