@@ -7,7 +7,7 @@
 # digest is filled in after a push (docker buildx imagetools inspect); empty = unpublished.
 ref: ghcr.io/nesar/desc-mcp
 tag: f4497551acdf-cpu
-digest: sha256:f7e71cde69359d01526e8d39bebe194edf4b526841c956004647d5d54588e660
+digest: sha256:ea5fc2bb2655b32fc44dad5b61e8810a92802541f4e9124e35dc8a5d26e62e11
 lock: conda-lock-image.yml
 platforms: [linux/amd64]
 mpi: mpich-abi
