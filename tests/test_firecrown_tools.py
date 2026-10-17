@@ -478,7 +478,7 @@ def test_run_chain_no_wait_then_collect(experiment, work, monkeypatch, tmp_path)
     pending = r.metadata["pending"]
     assert Path(pending).is_file() and "firecrown_collect_chain" in r.message
 
-    monkeypatch.setattr(d, "collect_kernel", lambda rec: {"status": "pending", "state": "QUEUED", "message": "later"})
+    monkeypatch.setattr(d, "collect_kernel", lambda rec, wait_s=0: {"status": "pending", "state": "QUEUED", "message": "later", "wait_s": wait_s})
     p = firecrown_collect_chain(output_dir=str(out), pending=pending)
     assert p.metadata["pending"] and "QUEUED" in p.message
 
@@ -489,7 +489,7 @@ def test_run_chain_no_wait_then_collect(experiment, work, monkeypatch, tmp_path)
             "result": {"chain_files": ["./chain_abc.1.txt"], "n_samples": 20, "n_weighted": 20.0,
                        "acceptance_rate": 0.3, "converged": True, "Rminus1": 0.01, "sampled": ["sigma8"],
                        "summary": {"sigma8": {"mean": 0.81, "std": 0.01, "lower68": 0.80, "upper68": 0.82}}}}
-    monkeypatch.setattr(d, "collect_kernel", lambda rec: done)
+    monkeypatch.setattr(d, "collect_kernel", lambda rec, wait_s=0: done)
     f = firecrown_collect_chain(output_dir=str(out), pending=pending)
     assert f.metadata["chain_txt"] == str(chain) and f.metadata["converged"] is True
     assert any(x.endswith(".png") for x in f.files)  # trace plot drawn from the local copy

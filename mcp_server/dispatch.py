@@ -323,12 +323,14 @@ def _check_result(result: dict, site: str) -> dict:
     return result
 
 
-def collect_kernel(record: str) -> dict:
-    """One non-blocking look at a job submitted with ``run_kernel(wait=False)``
-    (or one whose waiting call timed out), from its ``dispatch_<job>.json``
-    record path. Returns the engine dict like :func:`run_kernel` once the job
-    has finished, or ``{"status": "pending" | "unknown", "state", "message"}``
+def collect_kernel(record: str, wait_s: int = 0) -> dict:
+    """One look at a job submitted with ``run_kernel(wait=False)`` (or one
+    whose waiting call timed out), from its ``dispatch_<job>.json`` record
+    path. Returns the engine dict like :func:`run_kernel` once the job has
+    finished, or ``{"status": "pending" | "unknown", "state", "message"}``
     while it has not; raises RuntimeError when it ended without results.
+    ``wait_s`` > 0 keeps looking (every 30 s) up to that long while pending -
+    engines without the parameter get one look.
 
     Not an MCP tool. Works whatever the active site is: the record names it.
     """
@@ -338,7 +340,10 @@ def collect_kernel(record: str) -> dict:
         raise RuntimeError("Collecting a no-wait job needs a hep-genesis backend with "
                            "hep_genesis.iri.dispatch.collect (update the engine install).") from exc
     rec = load_record(record)
-    result = collect_dispatched(rec)
+    try:
+        result = collect_dispatched(rec, wait_s=max(0, int(wait_s))) if wait_s else collect_dispatched(rec)
+    except TypeError:  # older engine: no wait_s
+        result = collect_dispatched(rec)
     if isinstance(result, dict) and result.get("status") in ("pending", "unknown"):
         return result
     return _check_result(result, rec["site"])

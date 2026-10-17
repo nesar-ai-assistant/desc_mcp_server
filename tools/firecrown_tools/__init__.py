@@ -1319,16 +1319,17 @@ firecrown_run_chain.weight = "heavy"
 def firecrown_collect_chain(
     output_dir: Annotated[str, Field(min_length=1)],
     pending: Annotated[str, Field(min_length=1, description="The chain_pending_<slug>.json file firecrown_run_chain(wait=False) returned (metadata.pending).")],
+    wait_s: Annotated[int, Field(ge=0, le=3600, description="0 (default): one look. > 0: keep waiting up to this many seconds (polling every 30 s) while the job is still queued/running, then answer. Use e.g. 600 instead of calling this tool in a tight loop - you cannot sleep between calls, and every poll re-sends the whole conversation.")] = 0,
 ) -> ArtifactResult:
-    """Collect a facility chain submitted with firecrown_run_chain(wait=False): one non-blocking look at the job.
+    """Collect a facility chain submitted with firecrown_run_chain(wait=False): one look at the job (or a bounded wait with wait_s).
 
     Finished: fetches the chain files back and returns the same summary as a
     waiting firecrown_run_chain (means, 68% intervals, R-1 / converged, trace
     plot; then firecrown_plot_chain for the corner plot). Still queued or
-    running: status 'pending' with the scheduler state - call again later,
-    never resubmit. Ended without results: an error with the job's stderr
-    verdict. Works whatever set_dispatch currently says: the job's record
-    names its facility.
+    running: status 'pending' with the scheduler state - call again later
+    (or pass wait_s), never resubmit. Ended without results: an error with
+    the job's stderr verdict. Works whatever set_dispatch currently says:
+    the job's record names its facility.
     """
     import json as _json
 
@@ -1341,7 +1342,7 @@ def firecrown_collect_chain(
     if not info.get("record"):
         raise ValueError(f"{pfile} has no dispatch record (the submission wrote none - no artifact folder?).")
     outdir = resolve_outdir(output_dir)
-    res = collect_kernel(info["record"])
+    res = collect_kernel(info["record"], wait_s=wait_s)
     if res.get("status") in ("pending", "unknown"):
         return ArtifactResult(
             status="success", files=[],
