@@ -403,9 +403,14 @@ def set_dispatch(site: str, artifact_dir: str | None = None) -> str:
     from tools.envkernel import ENV_SETUP_CANDIDATES
 
     candidates = "; ".join(f"{c['name']}: {c['env_setup']}" for c in ENV_SETUP_CANDIDATES.get(site, []))
-    caps = ("Perlmutter walltime caps: debug 30 min, regular 12 h (jobs over 30 min route to regular)"
-            if site == "perlmutter" else
-            "Polaris walltime caps: debug 60 min, preemptable 72 h (single-node jobs over 60 min route there)")
+    try:
+        from hep_genesis.iri.dispatch.policy import queue_summary
+
+        caps = queue_summary(site)
+    except ImportError:  # engine predating the policy module
+        caps = ("Perlmutter walltime caps: debug 30 min, regular 48 h (jobs over 30 min route to regular)"
+                if site == "perlmutter" else
+                "Polaris walltime caps: debug/debug-scaling 60 min below 10 nodes, prod 3 h at 10-24 nodes")
     return (
         f"Dispatch: remote on {site} ({facility}) - heavy tools will stage this "
         "server's kernels, submit via IRI, and fetch results back. Each call is "

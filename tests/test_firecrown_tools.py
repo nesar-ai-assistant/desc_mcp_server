@@ -179,6 +179,16 @@ def test_chain_walltime_policy():
     assert wt == 1800 and not warns
     wt, est, warns = _chain_walltime(20000, 3500)
     assert wt == 3500 and any("may stop" in w for w in warns)
+    # site-aware defaults: Polaris keeps a default chain in the prompt queues
+    # (60 min below 10 nodes, 3 h at 10-24 nodes), Perlmutter stays at 12 h
+    wt, est, warns = _chain_walltime(20000, None, "polaris", 2)
+    assert wt == 3600 and any("resume=True" in w and "prod" in w for w in warns)
+    wt, est, warns = _chain_walltime(20000, None, "polaris", 10)
+    assert wt == 3 * 3600
+    wt, est, warns = _chain_walltime(20000, None, "perlmutter", 8)
+    assert wt == 12 * 3600
+    wt, est, warns = _chain_walltime(20000, 43200, "polaris", 2)   # explicit value is honoured
+    assert wt == 43200
     assert _needs_ppf({"wa": {"min": -3, "max": 1}}, {})
     assert _needs_ppf({"w0": {"min": -2, "max": -0.3}}, {})
     assert not _needs_ppf({"w0": {"min": -1, "max": -0.3}}, {"wa": 0.0})

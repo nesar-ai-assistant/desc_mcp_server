@@ -54,8 +54,9 @@ CAVEATS = [
     "m_nu is the summed neutrino mass in eV (0 = massless); firecrown 1.16 shows its default as [] internally.",
     "firecrown_run_chain is a Cobaya MCMC with CCL in the loop (~0.4 s per DES-Y1 3x2pt evaluation): "
     "hundreds of samples locally in the foreground, background=True for longer local runs, dispatch "
-    "(env_setup) for real chains. Its walltime_s (default ~5 s/sample, capped at 12 h) is what the "
-    "facility job requests; continue a chain that stopped at its walltime with resume=True.",
+    "(env_setup) for real chains. Its walltime_s (default ~5 s/sample, capped at the site's prompt-queue "
+    "walltime: Polaris 60 min below 10 nodes / 3 h at 10-24 nodes, Perlmutter 12 h) is what the facility "
+    "job requests; continue a chain that stopped at its walltime with resume=True.",
     "w0-wa chains: CAMB's fluid dark energy cannot cross w = -1; firecrown_run_chain switches to the PPF "
     "model automatically when wa is sampled (dark_energy_model='auto'), writing a *_ppf.yaml experiment copy.",
     "TATT / PT bias / halo-model IA factories need a pt_calculator/hm_calculator in ModelingTools and are not "
@@ -935,27 +936,46 @@ def firecrown_scan_loglike(
 firecrown_scan_loglike.weight = "dispatchable"
 
 
-# Perlmutter `regular` QOS cap; a chain longer than this must be resumed in a
-# second job (resume=True) - the engine rejects longer requests before staging.
+# Cap on a DEFAULT walltime when no site is known (local runs; Perlmutter's
+# value in the engine). On a facility the engine's queue policy decides: the
+# prompt-queue cap on Polaris (60 min below 10 nodes, 3 h at 10-24 nodes - the
+# long small-node queues sat for hours in 2026-10), 12 h on Perlmutter. A
+# chain longer than its walltime is resumed in a second job (resume=True).
 _WALLTIME_CAP_S = 12 * 3600
 _SECONDS_PER_SAMPLE = 5.0  # DES-Y1 3x2pt, ~0.4 s/evaluation x acceptance ~ 1/10
 
 
-def _chain_walltime(max_samples: int, walltime_s: int | None) -> tuple[int, int, list[str]]:
+def _default_walltime_cap_s(site: str | None, nodes: int) -> int:
+    if not site:
+        return _WALLTIME_CAP_S
+    try:
+        from hep_genesis.iri.dispatch.policy import recommended_walltime_cap_s
+    except ImportError:  # engine predating the policy module
+        return _WALLTIME_CAP_S
+    return int(recommended_walltime_cap_s(site, nodes))
+
+
+def _chain_walltime(max_samples: int, walltime_s: int | None, site: str | None = None,
+                    nodes: int = 1) -> tuple[int, int, list[str]]:
     """(walltime_s, estimated_s, warnings): the walltime a chain job requests.
 
-    Default = the ~5 s/sample estimate clamped to [30 min, 12 h]; an explicit
-    walltime_s is honoured. Either way the estimate is reported, and a chain
-    that cannot finish inside the walltime gets a warning pointing at resume.
+    Default = the ~5 s/sample estimate clamped to [30 min, the site's cap for a
+    default walltime] (see _default_walltime_cap_s); an explicit walltime_s is
+    honoured. Either way the estimate is reported, and a chain that cannot
+    finish inside the walltime gets a warning pointing at resume.
     """
     est = int(max(1800, max_samples * _SECONDS_PER_SAMPLE))
     warns = []
+    cap = _default_walltime_cap_s(site, nodes)
     if walltime_s is None:
-        walltime_s = min(est, _WALLTIME_CAP_S)
-        if est > _WALLTIME_CAP_S:
-            warns.append(f"estimated runtime {est / 3600:.1f} h exceeds the 12 h walltime cap: the chain is "
-                         f"capped at walltime_s={walltime_s}; it will stop at the walltime and can be continued "
-                         "with resume=True (same arguments).")
+        walltime_s = min(est, cap)
+        if est > cap:
+            where = f" on {site} at {nodes} node(s)" if site else ""
+            more = (" (10-24 nodes get 3 h in prod; the longer small-node queues wait for hours and may be "
+                    "preempted)" if (site or "").lower() == "polaris" and nodes < 10 else "")
+            warns.append(f"estimated runtime {est / 3600:.1f} h exceeds the {cap / 3600:g} h default walltime "
+                         f"cap{where}{more}: the chain is capped at walltime_s={walltime_s}; it will stop at the "
+                         "walltime and can be continued with resume=True (same arguments).")
     elif est > walltime_s:
         warns.append(f"estimated runtime {est / 3600:.1f} h exceeds walltime_s={walltime_s}: the chain may stop "
                      "before max_samples; continue it with resume=True (same arguments).")
@@ -1174,7 +1194,7 @@ def firecrown_run_chain(
     plot: Annotated[bool, Field(description="Trace plot of the sampled parameters (needs the chain file locally).")] = True,
     env_setup: Annotated[str | None, Field(description="Remote runs only, OPTIONAL override: a shell snippet activating a facility-resident environment to use INSTEAD of the pack's own lock environment (which the engine builds on the node by default). Leave empty.")] = None,
     sacc_remote_path: str | None = None,
-    walltime_s: Annotated[int | None, Field(ge=300, le=86400, description="Walltime of the facility job / timeout of a local run, seconds. Default: ~5 s per sample, clamped to [30 min, 12 h] (the Perlmutter regular-QOS cap; jobs over 30 min route to that QOS). Size max_samples to it, or continue a stopped chain with resume=True.")] = None,
+    walltime_s: Annotated[int | None, Field(ge=300, le=86400, description="Walltime of the facility job / timeout of a local run, seconds. Default: ~5 s per sample, clamped to [30 min, the site's prompt-queue cap]: Polaris 60 min below 10 nodes and 3 h at 10-24 nodes (longer small-node jobs are refused: they wait for hours or get preempted), Perlmutter 12 h (regular admits 48 h; shorter requests backfill sooner). Size max_samples to it, or continue a stopped chain with resume=True. Explicit values up to the QOS cap are honoured.")] = None,
     resume: Annotated[bool, Field(description="Continue a chain with the same prefix/arguments from its Cobaya checkpoint (a run that hit its walltime or max_samples) instead of starting over.")] = False,
     nodes: Annotated[int, Field(ge=1, description="Facility runs only: nodes for the chain job. Each node runs 4 Cobaya chains in parallel (one MPI process per chain, 8 cores each: the kernel's DISPATCH_MPI shape), so nodes=2 is 8 chains and R-1 becomes the real cross-chain Gelman-Rubin statistic; the result combines all chains. Walltime is per chain (each still runs up to max_samples), the allocation charge is nodes x walltime, and the facility's node cap (NERSC_MAX_NODES / ALCF_MAX_NODES) applies. resume needs the same nodes. Not combinable with env_setup.")] = 1,
     background: Annotated[bool, Field(description="LOCAL runs only: start the chain as a detached subprocess and return at once with the chain paths; poll firecrown_chain_status, then firecrown_plot_chain for the posterior. Use for anything beyond a few hundred samples - a foreground local chain blocks this call for its whole runtime.")] = False,
@@ -1230,11 +1250,11 @@ def firecrown_run_chain(
     if dark_energy_model == "ppf":
         exp_path = _experiment_with_dark_energy_model(exp_path, "ppf")
         warns.append("CAMB dark_energy_model=ppf (w(a) may cross -1); experiment copy " + exp_path.name + ".")
-    walltime, est_s, wt_warns = _chain_walltime(max_samples, walltime_s)
-    warns.extend(wt_warns)
     from mcp_server.dispatch import remote_site
 
     site = remote_site()
+    walltime, est_s, wt_warns = _chain_walltime(max_samples, walltime_s, site, nodes)
+    warns.extend(wt_warns)
     n_chains = nodes * int(_CHAIN_MPI["main"]["tasks_per_node"]) if site else 1
     if nodes > 1:
         if not site:
